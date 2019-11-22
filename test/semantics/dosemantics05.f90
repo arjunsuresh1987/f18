@@ -46,7 +46,7 @@ subroutine s1()
   ! References in this DO CONCURRENT are OK since there's no DEFAULT(NONE)
   ! locality-spec
   associate (avar => ivar)
-    do concurrent (i = 1:2:0) shared(jvar)
+    do concurrent (i = 1:2) shared(jvar)
       ivar = 3
       ivar = ivar + i
       block
@@ -61,7 +61,7 @@ subroutine s1()
   end associate
   
   associate (avar => ivar)
-    do concurrent (i = 1:2:0) default(none) shared(jvar) local(kvar)
+    do concurrent (i = 1:2) default(none) shared(jvar) local(kvar)
 !ERROR: Variable 'ivar' from an enclosing scope referenced in a DO CONCURRENT with DEFAULT(NONE) must appear in a locality-spec
       ivar =  &
 !ERROR: Variable 'ivar' from an enclosing scope referenced in a DO CONCURRENT with DEFAULT(NONE) must appear in a locality-spec

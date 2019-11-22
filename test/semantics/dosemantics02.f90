@@ -33,11 +33,23 @@ SUBROUTINE do_concurrent_c1121(i,n)
 END SUBROUTINE do_concurrent_c1121
 
 SUBROUTINE s1()
-  ! Warn since no constrains are violated 
-  DO 20 I = 1, 10, 0
+  INTEGER, PARAMETER :: constInt = 0
+
+  ! Warn on this one for backwards compatibility
+  DO 10 I = 1, 10, 0
+  10 CONTINUE
+
+  ! Warn on this one for backwards compatibility
+  DO 20 I = 1, 10, 5 - 5
   20 CONTINUE
 
-  ! Warn since no constrains are violated 
-  DO 40 I = 1, 10, 5 - 5
-  40 CONTINUE
+  ! Error, no compatibility requirement for DO CONCURRENT
+!ERROR: DO CONCURRENT step expression should not be zero
+  DO CONCURRENT (I = 1 : 10 : 0)
+  END DO
+
+  ! Error, this time with an integer constant
+!ERROR: DO CONCURRENT step expression should not be zero
+  DO CONCURRENT (I = 1 : 10 : constInt)
+  END DO
 end subroutine s1

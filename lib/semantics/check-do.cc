@@ -199,7 +199,6 @@ private:
     return common::GetPtrFromOptional(std::get<0>(a.t));
   }
 
-  bool anyObjectIsPolymorphic() { return false; }  // FIXME placeholder
   bool fromScope(const Symbol &symbol, const std::string &moduleName) {
     if (symbol.GetUltimate().owner().IsModule() &&
         symbol.GetUltimate().owner().GetName().value().ToString() ==
@@ -357,7 +356,6 @@ private:
     if (isReal && !warn) {
       // No messages for the default case
     } else if (isReal && warn) {
-      // TODO: Mark the following message as a warning when we have warnings
       context_.Say(sourceLocation, "DO controls should be INTEGER"_en_US);
     } else {
       SayBadDoControl(sourceLocation);
@@ -395,20 +393,6 @@ private:
     }
   }
 
-  // Step expressions can't be zero (Section 11.1.7.4.1, paragraph 1).
-  // Make this a warning since it's not a constraint violation
-  void CheckZeroStep(const parser::ScalarExpr &stepExpression) {
-    MaybeExpr stepExpr{evaluate::Fold(
-        context_.foldingContext(), AnalyzeExpr(context_, stepExpression))};
-    if (stepExpr) {
-      std::optional<std::int64_t> stepValue{evaluate::ToInt64(*stepExpr)};
-      if (stepValue && stepValue.value() == 0) {
-        context_.Say(stepExpression.thing.value().source,
-            "DO step expression should not be zero"_en_US);
-      }
-    }
-  }
-
   void CheckDoNormal(const parser::DoConstruct &doConstruct) {
     // C1120 -- types of DO variables must be INTEGER, extended by allowing
     // REAL and DOUBLE PRECISION
@@ -417,8 +401,9 @@ private:
     CheckDoExpression(bounds.lower);
     CheckDoExpression(bounds.upper);
     if (bounds.step) {
-      CheckDoExpression(bounds.step.value());
-      CheckZeroStep(bounds.step.value());
+      CheckDoExpression(*bounds.step);
+      SayIfZero(*bounds.step, context_, bounds.step->thing.value().source,
+          "DO step expression should not be zero"_en_US);
     }
   }
 
@@ -582,6 +567,8 @@ private:
         if (const auto &expr{
                 std::get<std::optional<parser::ScalarIntExpr>>(c.t)}) {
           HasNoReferences(indexNames, *expr);
+          SayIfZero(*expr, context_, expr->thing.thing.value().source,
+              "DO CONCURRENT step expression should not be zero"_err_en_US);
         }
       }
     }

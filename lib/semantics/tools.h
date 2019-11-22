@@ -248,6 +248,19 @@ template<typename T> std::optional<std::int64_t> GetIntValue(const T &x) {
   }
 }
 
+template<typename T> bool IsZero(const T &expr) {
+  const std::optional<std::int64_t> value{GetIntValue(expr)};
+  return value && *value == 0;
+}
+
+template<typename T>
+static void SayIfZero(T &expr, SemanticsContext &context,
+    parser::CharBlock location, parser::MessageFixedText &&message) {
+  if (IsZero(expr)) {
+    context.Say(location, message);
+  }
+}
+
 // Derived type component iterator that provides a C++ LegacyForwardIterator
 // iterator over the Ordered, Direct, Ultimate or Potential components of a
 // DerivedTypeSpec. These iterators can be used with STL algorithms
