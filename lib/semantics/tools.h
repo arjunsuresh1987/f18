@@ -248,13 +248,13 @@ template<typename T> std::optional<std::int64_t> GetIntValue(const T &x) {
   }
 }
 
-template<typename T> bool IsZero(const T &expr) {
-  const std::optional<std::int64_t> value{GetIntValue(expr)};
+template<typename T> static bool IsZero(const T &expr) {
+  auto value{GetIntValue(expr)};
   return value && *value == 0;
 }
 
 template<typename T>
-static void SayIfZero(T &expr, SemanticsContext &context,
+static void SayIfZero(const T &expr, SemanticsContext &context,
     parser::CharBlock location, parser::MessageFixedText &&message) {
   if (IsZero(expr)) {
     context.Say(location, message);
