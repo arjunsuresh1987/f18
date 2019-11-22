@@ -3409,6 +3409,11 @@ bool DeclarationVisitor::Pre(const parser::DeclarationTypeSpec::Record &) {
 
 void DeclarationVisitor::Post(const parser::DerivedTypeSpec &x) {
   const auto &typeName{std::get<parser::Name>(x.t)};
+  // TODO pmk:
+  // Allow forward references to unparameterized derived
+  // types in POINTER and ALLOCATABLE components (& maybe variables).
+  // Need to ensure eventual definition and prevent any usage outside
+  // other POINTER/ALLOCATABLE declarations in the meantime.
   auto spec{ResolveDerivedType(typeName)};
   if (!spec) {
     return;

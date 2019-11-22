@@ -228,10 +228,12 @@ public:
   const std::list<SourceName> &paramNames() const { return paramNames_; }
   const SymbolVector &paramDecls() const { return paramDecls_; }
   bool sequence() const { return sequence_; }
+  bool defined() const { return defined_; }
   void add_paramName(const SourceName &name) { paramNames_.push_back(name); }
   void add_paramDecl(const Symbol &symbol) { paramDecls_.push_back(symbol); }
   void add_component(const Symbol &);
   void set_sequence(bool x = true) { sequence_ = x; }
+  void set_defined(bool x = true) { defined_ = x; }
   const std::list<SourceName> &componentNames() const {
     return componentNames_;
   }
@@ -258,6 +260,7 @@ private:
   // order.  A parent component, if any, appears first in this list.
   std::list<SourceName> componentNames_;
   bool sequence_{false};
+  bool defined_{false};  // false when forward-referenced
   friend std::ostream &operator<<(std::ostream &, const DerivedTypeDetails &);
 };
 
