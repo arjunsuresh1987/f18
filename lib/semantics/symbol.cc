@@ -598,9 +598,9 @@ bool GenericKind::IsOperator() const {
 std::string GenericKind::ToString() const {
   return std::visit(
       common::visitors{
-          [&](const OtherKind &x) { return EnumToString(x); },
-          [&](const DefinedIo &x) { return EnumToString(x); },
-          [&](const auto &x) { return common::EnumToString(x); },
+          [](const OtherKind &x) { return EnumToString(x); },
+          [](const DefinedIo &x) { return EnumToString(x); },
+          [](const auto &x) { return common::EnumToString(x); },
       },
       u);
 }
