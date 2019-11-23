@@ -127,7 +127,7 @@ void CheckHelper::Check(const Symbol &symbol) {
   }
   const DeclTypeSpec *type{symbol.GetType()};
   const DerivedTypeSpec *derived{type ? type->AsDerived() : nullptr};
-  auto save{messages_.SetLocation(symbol.name())};
+  auto restorer{messages_.SetLocation(symbol.name())};
   context_.set_location(symbol.name());
   bool isAssociated{symbol.has<UseDetails>() || symbol.has<HostAssocDetails>()};
   if (symbol.attrs().test(Attr::VOLATILE)) {
@@ -403,7 +403,7 @@ void CheckHelper::CheckGeneric(
   bool ok{true};
   if (details.kind().IsAssignment()) {
     for (std::size_t i{0}; i < specifics.size(); ++i) {
-      auto save{messages_.SetLocation(bindingNames[i])};
+      auto restorer{messages_.SetLocation(bindingNames[i])};
       ok &= CheckDefinedAssignment(specifics[i], (*procs)[i]);
     }
   }
