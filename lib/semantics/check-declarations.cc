@@ -417,8 +417,8 @@ void CheckHelper::CheckGeneric(
 void CheckHelper::CheckSpecificsAreDistinguishable(const Symbol &generic,
     const GenericDetails &details, const std::vector<Procedure> &procs) {
   const SymbolVector &specifics{details.specificProcs()};
-  auto count{specifics.size()};
-  if (specifics.size() < 2) {
+  std::size_t count{specifics.size()};
+  if (count < 2) {
     return;
   }
   GenericKind kind{details.kind()};
