@@ -157,6 +157,7 @@ public:
     actuals_.emplace_back(AnalyzeExpr(x));
     fatalErrors_ |= !actuals_.back();
   }
+  void Analyze(const parser::Variable &);
   void Analyze(const parser::ActualArgSpec &, bool isSubroutine);
 
   bool IsIntrinsicRelational(RelationalOperator) const;
@@ -172,18 +173,21 @@ public:
     return TryDefinedOp(
         context_.context().languageFeatures().GetNames(opr), std::move(msg));
   }
+  // Find and return a user-defined assignment
+  std::optional<ProcedureRef> TryDefinedAssignment();
+  std::optional<ProcedureRef> GetDefinedAssignmentProc();
 
 private:
   MaybeExpr TryDefinedOp(
       std::vector<const char *>, parser::MessageFixedText &&);
   std::optional<ActualArgument> AnalyzeExpr(const parser::Expr &);
   bool AreConformable() const;
-  const Symbol *FindDefinedOp(const char *) const;
+  Symbol *FindDefinedOp(const char *) const;
   std::optional<DynamicType> GetType(std::size_t) const;
   bool IsBOZLiteral(std::size_t i) const {
     return std::holds_alternative<BOZLiteralConstant>(GetAsExpr(i).u);
   }
-  void SayNoMatch(const char *);
+  void SayNoMatch(const std::string &, bool isAssignment = false);
   std::string TypeAsFortran(std::size_t);
   bool AnyUntypedOperand();
 
@@ -1786,6 +1790,18 @@ MaybeExpr ExpressionAnalyzer::AnalyzeCall(
   return std::nullopt;
 }
 
+void ExpressionAnalyzer::Analyze(const parser::AssignmentStmt &x) {
+  ArgumentAnalyzer analyzer{*this};
+  analyzer.Analyze(std::get<parser::Variable>(x.t));
+  analyzer.Analyze(std::get<parser::Expr>(x.t));
+  if (!analyzer.fatalErrors()) {
+    std::optional<ProcedureRef> procRef{analyzer.TryDefinedAssignment()};
+    x.typedAssignment.reset(new GenericAssignmentWrapper{procRef
+            ? Assignment{std::move(*procRef)}
+            : Assignment{analyzer.GetAsExpr(0), analyzer.GetAsExpr(1)}});
+  }
+}
+
 static bool IsExternalCalledImplicitly(
     parser::CharBlock callSite, const ProcedureDesignator &proc) {
   if (const auto *symbol{proc.GetSymbol()}) {
@@ -1816,8 +1832,8 @@ std::optional<characteristics::Procedure> ExpressionAnalyzer::CheckCall(
           pure{semantics::FindPureProcedureContaining(
               context_.FindScope(callSite))}) {
         Say(callSite,
-            "Procedure referenced in PURE subprogram '%s' must be PURE too"_err_en_US,
-            DEREF(pure->symbol()).name());
+            "Procedure '%s' referenced in PURE subprogram '%s' must be PURE too"_err_en_US,
+            DEREF(proc.GetSymbol()).name(), DEREF(pure->symbol()).name());
       }
     }
   }
@@ -2397,6 +2413,15 @@ MaybeExpr ExpressionAnalyzer::MakeFunctionRef(
   }
 }
 
+void ArgumentAnalyzer::Analyze(const parser::Variable &x) {
+  source_.ExtendToCover(x.GetSource());
+  if (MaybeExpr expr{context_.Analyze(x)}) {
+    actuals_.emplace_back(std::move(*expr));
+  } else {
+    fatalErrors_ = true;
+  }
+}
+
 void ArgumentAnalyzer::Analyze(
     const parser::ActualArgSpec &arg, bool isSubroutine) {
   // TODO: C1002: Allow a whole assumed-size array to appear if the dummy
@@ -2492,7 +2517,7 @@ bool ArgumentAnalyzer::IsIntrinsicConcat() const {
 
 MaybeExpr ArgumentAnalyzer::TryDefinedOp(
     const char *opr, parser::MessageFixedText &&error) {
-  const Symbol *symbol{AnyUntypedOperand() ? nullptr : FindDefinedOp(opr)};
+  Symbol *symbol{AnyUntypedOperand() ? nullptr : FindDefinedOp(opr)};
   if (!symbol) {
     if (actuals_.size() == 1 || AreConformable()) {
       context_.Say(std::move(error), ToUpperCase(opr), TypeAsFortran(0),
@@ -2505,11 +2530,11 @@ MaybeExpr ArgumentAnalyzer::TryDefinedOp(
     return std::nullopt;
   }
   parser::Messages messages;
-  parser::Name name{source_, const_cast<Symbol *>(symbol)};
+  parser::Name name{source_, symbol};
   if (auto result{context_.AnalyzeDefinedOp(messages, name, GetActuals())}) {
     return result;
   } else {
-    SayNoMatch(opr);
+    SayNoMatch("OPERATOR(" + ToUpperCase(opr) + ')');
     return std::nullopt;
   }
 }
@@ -2522,6 +2547,43 @@ MaybeExpr ArgumentAnalyzer::TryDefinedOp(
     }
   }
   return TryDefinedOp(oprs[0], std::move(error));
+}
+
+std::optional<ProcedureRef> ArgumentAnalyzer::TryDefinedAssignment() {
+  using semantics::Tristate;
+  const auto &lhs{GetAsExpr(0)};
+  const auto &rhs{GetAsExpr(1)};
+  Tristate isDefined{semantics::IsDefinedAssignment(
+      lhs.GetType(), lhs.Rank(), rhs.GetType(), rhs.Rank())};
+  if (isDefined == Tristate::No) {
+    return std::nullopt;  // user-defined assignment not allowed for these args
+  }
+  auto restorer{context_.GetContextualMessages().SetLocation(source_)};
+  auto procRef{GetDefinedAssignmentProc()};
+  if (!procRef) {
+    if (isDefined == Tristate::Yes) {
+      SayNoMatch("ASSIGNMENT(=)", true);
+    }
+    return std::nullopt;
+  }
+  context_.CheckCall(source_, procRef->proc(), procRef->arguments());
+  return std::move(*procRef);
+}
+
+std::optional<ProcedureRef> ArgumentAnalyzer::GetDefinedAssignmentProc() {
+  parser::Messages tmpMessages;
+  auto restorer{context_.GetContextualMessages().SetMessages(tmpMessages)};
+  const auto &scope{context_.context().FindScope(source_)};
+  if (const Symbol *
+      symbol{scope.FindSymbol(parser::CharBlock{"assignment(=)"s})}) {
+    const Symbol *specific{context_.ResolveGeneric(*symbol, actuals_)};
+    if (specific) {
+      ProcedureDesignator designator{*specific};
+      actuals_[1]->Parenthesize();
+      return ProcedureRef{std::move(designator), std::move(actuals_)};
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<ActualArgument> ArgumentAnalyzer::AnalyzeExpr(
@@ -2542,7 +2604,7 @@ bool ArgumentAnalyzer::AreConformable() const {
   return evaluate::AreConformable(*actuals_[0], *actuals_[1]);
 }
 
-const Symbol *ArgumentAnalyzer::FindDefinedOp(const char *opr) const {
+Symbol *ArgumentAnalyzer::FindDefinedOp(const char *opr) const {
   const auto &scope{context_.context().FindScope(source_)};
   return scope.FindSymbol(parser::CharBlock{"operator("s + opr + ')'});
 }
@@ -2552,28 +2614,40 @@ std::optional<DynamicType> ArgumentAnalyzer::GetType(std::size_t i) const {
 }
 
 // Report error resolving opr when there is a user-defined one available
-void ArgumentAnalyzer::SayNoMatch(const char *opr) {
+void ArgumentAnalyzer::SayNoMatch(const std::string &opr, bool isAssignment) {
+  std::string type0{TypeAsFortran(0)};
   auto rank0{actuals_[0]->Rank()};
   if (actuals_.size() == 1) {
     if (rank0 > 0) {
-      context_.Say("No user-defined or intrinsic %s operator matches "
+      context_.Say("No intrinsic or user-defined %s matches "
                    "rank %d array of %s"_err_en_US,
-          ToUpperCase(opr), rank0, TypeAsFortran(0));
+          opr, rank0, type0);
     } else {
-      context_.Say("No user-defined or intrinsic %s operator matches "
+      context_.Say("No intrinsic or user-defined %s matches "
                    "operand type %s"_err_en_US,
-          ToUpperCase(opr), TypeAsFortran(0));
+          opr, type0);
     }
   } else {
+    std::string type1{TypeAsFortran(1)};
     auto rank1{actuals_[1]->Rank()};
     if (rank0 > 0 && rank1 > 0 && rank0 != rank1) {
-      context_.Say("No user-defined or intrinsic %s operator matches "
+      context_.Say("No intrinsic or user-defined %s matches "
                    "rank %d array of %s and rank %d array of %s"_err_en_US,
-          ToUpperCase(opr), rank0, TypeAsFortran(0), rank1, TypeAsFortran(1));
+          opr, rank0, type0, rank1, type1);
+    } else if (isAssignment && rank0 != rank1) {
+      if (rank0 == 0) {
+        context_.Say("No intrinsic or user-defined %s matches "
+                     "scalar %s and rank %d array of %s"_err_en_US,
+            opr, type0, rank1, type1);
+      } else {
+        context_.Say("No intrinsic or user-defined %s matches "
+                     "rank %d array of %s and scalar %s"_err_en_US,
+            opr, rank0, type0, type1);
+      }
     } else {
-      context_.Say("No user-defined or intrinsic %s operator matches "
+      context_.Say("No intrinsic or user-defined %s matches "
                    "operand types %s and %s"_err_en_US,
-          ToUpperCase(opr), TypeAsFortran(0), TypeAsFortran(1));
+          opr, type0, type1);
     }
   }
 }
@@ -2613,6 +2687,11 @@ evaluate::Expr<evaluate::SubscriptInteger> AnalyzeKindSelector(
 
 void AnalyzeCallStmt(SemanticsContext &context, const parser::CallStmt &call) {
   evaluate::ExpressionAnalyzer{context}.Analyze(call);
+}
+
+void AnalyzeAssignmentStmt(
+    SemanticsContext &context, const parser::AssignmentStmt &stmt) {
+  evaluate::ExpressionAnalyzer{context}.Analyze(stmt);
 }
 
 ExprChecker::ExprChecker(SemanticsContext &context) : context_{context} {}
