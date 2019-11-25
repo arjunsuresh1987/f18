@@ -150,7 +150,7 @@ public:
   const Expr<SomeType> &GetAsExpr(std::size_t i) const {
     return DEREF(actuals_.at(i).value().UnwrapExpr());
   }
-  Expr<SomeType> &&GetAsExpr(std::size_t i) {
+  Expr<SomeType> &&MoveExpr(std::size_t i) {
     return std::move(DEREF(actuals_.at(i).value().UnwrapExpr()));
   }
   void Analyze(const common::Indirection<parser::Expr> &x) {
@@ -1801,7 +1801,7 @@ void ExpressionAnalyzer::Analyze(const parser::AssignmentStmt &x) {
     std::optional<ProcedureRef> procRef{analyzer.TryDefinedAssignment()};
     x.typedAssignment.reset(new GenericAssignmentWrapper{procRef
             ? Assignment{std::move(*procRef)}
-            : Assignment{analyzer.GetAsExpr(0), analyzer.GetAsExpr(1)}});
+            : Assignment{analyzer.MoveExpr(0), analyzer.MoveExpr(1)}});
   }
 }
 
@@ -1868,9 +1868,9 @@ static MaybeExpr NumericUnaryHelper(ExpressionAnalyzer &context,
     return std::nullopt;
   } else if (analyzer.IsIntrinsicNumeric(opr)) {
     if (opr == NumericOperator::Add) {
-      return analyzer.GetAsExpr(0);
+      return analyzer.MoveExpr(0);
     } else {
-      return Negation(context.GetContextualMessages(), analyzer.GetAsExpr(0));
+      return Negation(context.GetContextualMessages(), analyzer.MoveExpr(0));
     }
   } else {
     return analyzer.TryDefinedOp(AsFortran(opr),
@@ -1893,7 +1893,7 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::Expr::NOT &x) {
     return std::nullopt;
   } else if (analyzer.IsIntrinsicLogical()) {
     return AsGenericExpr(
-        LogicalNegation(std::get<Expr<SomeLogical>>(analyzer.GetAsExpr(0).u)));
+        LogicalNegation(std::get<Expr<SomeLogical>>(analyzer.MoveExpr(0).u)));
   } else {
     return analyzer.TryDefinedOp(LogicalOperator::Not,
         "Operand of %s must be LOGICAL; have %s"_err_en_US);
@@ -1943,7 +1943,7 @@ MaybeExpr NumericBinaryHelper(ExpressionAnalyzer &context, NumericOperator opr,
     return std::nullopt;
   } else if (analyzer.IsIntrinsicNumeric(opr)) {
     return NumericOperation<OPR>(context.GetContextualMessages(),
-        analyzer.GetAsExpr(0), analyzer.GetAsExpr(1),
+        analyzer.MoveExpr(0), analyzer.MoveExpr(1),
         context.GetDefaultKind(TypeCategory::Real));
   } else {
     return analyzer.TryDefinedOp(AsFortran(opr),
@@ -1998,8 +1998,8 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::Expr::Concat &x) {
             DIE("different types for intrinsic concat");
           }
         },
-        std::move(std::get<Expr<SomeCharacter>>(analyzer.GetAsExpr(0).u).u),
-        std::move(std::get<Expr<SomeCharacter>>(analyzer.GetAsExpr(1).u).u));
+        std::move(std::get<Expr<SomeCharacter>>(analyzer.MoveExpr(0).u).u),
+        std::move(std::get<Expr<SomeCharacter>>(analyzer.MoveExpr(1).u).u));
   } else {
     return analyzer.TryDefinedOp("//",
         "Operands of %s must be CHARACTER with the same kind; have %s and %s"_err_en_US);
@@ -2029,7 +2029,7 @@ MaybeExpr RelationHelper(ExpressionAnalyzer &context, RelationalOperator opr,
     return std::nullopt;
   } else if (analyzer.IsIntrinsicRelational(opr)) {
     return AsMaybeExpr(Relate(context.GetContextualMessages(), opr,
-        analyzer.GetAsExpr(0), analyzer.GetAsExpr(1)));
+        analyzer.MoveExpr(0), analyzer.MoveExpr(1)));
   } else {
     return analyzer.TryDefinedOp(opr,
         "Operands of %s must have comparable types; have %s and %s"_err_en_US);
@@ -2069,8 +2069,8 @@ MaybeExpr LogicalBinaryHelper(ExpressionAnalyzer &context, LogicalOperator opr,
     return std::nullopt;
   } else if (analyzer.IsIntrinsicLogical()) {
     return AsGenericExpr(BinaryLogicalOperation(opr,
-        std::get<Expr<SomeLogical>>(analyzer.GetAsExpr(0).u),
-        std::get<Expr<SomeLogical>>(analyzer.GetAsExpr(1).u)));
+        std::get<Expr<SomeLogical>>(analyzer.MoveExpr(0).u),
+        std::get<Expr<SomeLogical>>(analyzer.MoveExpr(1).u)));
   } else {
     return analyzer.TryDefinedOp(
         opr, "Operands of %s must be LOGICAL; have %s and %s"_err_en_US);
