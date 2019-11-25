@@ -147,8 +147,11 @@ public:
     CHECK(!fatalErrors_);
     return std::move(actuals_);
   }
-  Expr<SomeType> GetAsExpr(std::size_t i) const {
+  const Expr<SomeType> &GetAsExpr(std::size_t i) const {
     return DEREF(actuals_.at(i).value().UnwrapExpr());
+  }
+  Expr<SomeType> &&GetAsExpr(std::size_t i) {
+    return std::move(DEREF(actuals_.at(i).value().UnwrapExpr()));
   }
   void Analyze(const common::Indirection<parser::Expr> &x) {
     Analyze(x.value());
